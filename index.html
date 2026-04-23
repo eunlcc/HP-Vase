@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drawing Canvas</title>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --text-sm: clamp(0.875rem, 0.8rem + 0.35vw, 1rem);
+      --text-base: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+      --space-2: 0.5rem;
+      --space-3: 0.75rem;
+      --space-4: 1rem;
+      --space-6: 1.5rem;
+      --radius-md: 0.5rem;
+      --radius-lg: 0.75rem;
+      --color-bg: #f3f3f3;
+      --color-surface: #ffffff;
+      --color-border: #bebebe;
+      --color-text: #1f1f1f;
+      --color-muted: #666666;
+      --color-success: #2f6f44;
+      --color-error: #8b2d2d;
+      --shadow-md: 0 12px 28px rgba(0,0,0,0.08);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-6);
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: 'Satoshi', Arial, sans-serif;
+      font-size: var(--text-base);
+    }
+
+    .app {
+      width: min(1040px, 100%);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: var(--space-6);
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 340px) 1fr;
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
+      align-items: end;
+    }
+
+    .fields,
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-4);
+      align-items: end;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      min-width: 160px;
+      flex: 1 1 180px;
+    }
+
+    .field label,
+    .toolbar label,
+    button,
+    .note,
+    .status {
+      font-size: var(--text-sm);
+    }
+
+    input[type="text"],
+    input[type="color"],
+    input[type="range"] {
+      font: inherit;
+    }
+
+    input[type="text"] {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: 0.75rem 0.9rem;
+      background: #fff;
+      min-height: 44px;
+    }
+
+    button {
+      border: 1px solid var(--color-border);
+      background: #fff;
+      border-radius: var(--radius-md);
+      padding: 0.7rem 1rem;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      min-height: 44px;
+    }
+
+    button:hover { background: #efefef; }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    input[type="color"], input[type="range"] { cursor: pointer; }
+
+    .canvas-wrap {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      background: #fff;
+    }
+
+    canvas {
+      width: 100%;
+      height: 520px;
+      display: block;
+      touch-action: none;
+      cursor: crosshair;
+    }
+
+    .footer-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: var(--space-3);
+      align-items: center;
+      margin-top: var(--space-4);
+    }
+
+    .note {
+      color: var(--color-muted);
+      margin: 0;
+    }
+
+    .status {
+      margin: 0;
+      font-weight: 500;
+    }
+
+    .status.success { color: var(--color-success); }
+    .status.error { color: var(--color-error); }
+
+    @media (max-width: 860px) {
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      canvas { height: 420px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="topbar">
+      <div class="fields">
+        <div class="field">
+          <label for="participantName">Participant name</label>
+          <input id="participantName" type="text" placeholder="Enter participant name">
+        </div>
+      </div>
+
+      <div class="instruction">
+        <p class="note">You can only draw inside the wider gray areas on the far left and far right of the canvas.<br>In each gray area, draw one vertical line (2 lines total).<br>Lines may be curved but must not cross or overlap themselves.</p>
+      </div>
+
+      <div class="toolbar">
+        <div class="field" style="min-width: 110px; flex: 0 1 120px;">
+          <label for="colorPicker">Brush color</label>
+          <input id="colorPicker" type="color" value="#111111" aria-label="Brush color">
+        </div>
+        <div class="field" style="min-width: 180px; flex: 1 1 180px;">
+          <label for="brushSize">Brush size</label>
+          <input id="brushSize" type="range" min="1" max="30" value="4" aria-label="Brush size">
+        </div>
+        <button id="uploadBtn" type="button">Upload to Drive</button>
+        <button id="clearBtn" type="button">Clear drawing</button>
+      </div>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="drawingCanvas"></canvas>
+    </div>
+
+    <div class="footer-row">
+      <p id="statusMessage" class="status">Ready to upload to Google Drive.</p>
+    </div>
+  </main>
+
+  <script>
+    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbybbEq_o0lwSMR_KBHtHwDfh8iO7KeoOefe5M9UKyQEn2ux3XYtYfDlGt7rmvT2KCYEJw/exec';
+
+    const canvas = document.getElementById('drawingCanvas');
+    const ctx = canvas.getContext('2d');
+    const participantNameInput = document.getElementById('participantName');
+    const colorPicker = document.getElementById('colorPicker');
+    const brushSize = document.getElementById('brushSize');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const statusMessage = document.getElementById('statusMessage');
+
+    let drawing = false;
+    let canDrawHere = false;
+    let leftBox = null;
+    let rightBox = null;
+    let strokes = [];
+    let currentStroke = null;
+
+    function setStatus(message, type = '') {
+      statusMessage.textContent = message;
+      statusMessage.className = `status${type ? ' ' + type : ''}`;
+    }
+
+    function setupCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+
+      const boxWidth = canvas.width * 0.44;
+      leftBox = { x: 0, y: 0, width: boxWidth, height: canvas.height };
+      rightBox = { x: canvas.width - boxWidth, y: 0, width: boxWidth, height: canvas.height };
+
+      redrawAll();
+    }
+
+    function drawBoxes() {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = '#d3d3d3';
+      ctx.fillRect(leftBox.x, leftBox.y, leftBox.width, leftBox.height);
+      ctx.fillRect(rightBox.x, rightBox.y, rightBox.width, rightBox.height);
+
+      ctx.strokeStyle = '#a8a8a8';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(leftBox.x + 0.5, leftBox.y + 0.5, leftBox.width - 1, leftBox.height - 1);
+      ctx.strokeRect(rightBox.x + 0.5, rightBox.y + 0.5, rightBox.width - 1, rightBox.height - 1);
+    }
+
+    function redrawAll() {
+      drawBoxes();
+      for (const stroke of strokes) {
+        if (!stroke.points.length) continue;
+        ctx.beginPath();
+        ctx.strokeStyle = stroke.color;
+        ctx.lineWidth = stroke.size;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+        for (let i = 1; i < stroke.points.length; i++) {
+          ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+        }
+        ctx.stroke();
+      }
+      ctx.beginPath();
+    }
+
+    function pointInBox(x, y, box) {
+      return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
+    }
+
+    function isInsideDrawableArea(x, y) {
+      return pointInBox(x, y, leftBox) || pointInBox(x, y, rightBox);
+    }
+
+    function getPosition(event) {
+      const rect = canvas.getBoundingClientRect();
+      const point = event.touches ? event.touches[0] : event;
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      return {
+        x: (point.clientX - rect.left) * scaleX,
+        y: (point.clientY - rect.top) * scaleY
+      };
+    }
+
+    function startDrawing(event) {
+      const pos = getPosition(event);
+      canDrawHere = isInsideDrawableArea(pos.x, pos.y);
+      if (!canDrawHere) {
+        drawing = false;
+        currentStroke = null;
+        return;
+      }
+
+      drawing = true;
+      currentStroke = {
+        color: colorPicker.value,
+        size: Number(brushSize.value),
+        points: [pos]
+      };
+      strokes.push(currentStroke);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+      event.preventDefault();
+    }
+
+    function draw(event) {
+      if (!drawing || !canDrawHere || !currentStroke) return;
+      const pos = getPosition(event);
+      if (!isInsideDrawableArea(pos.x, pos.y)) {
+        stopDrawing();
+        return;
+      }
+
+      currentStroke.points.push(pos);
+      ctx.strokeStyle = currentStroke.color;
+      ctx.lineWidth = currentStroke.size;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      event.preventDefault();
+    }
+
+    function stopDrawing() {
+      drawing = false;
+      canDrawHere = false;
+      currentStroke = null;
+      ctx.beginPath();
+    }
+
+    function formatDateParts() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      return {
+        date: `${year}${month}${day}`,
+        time: `${hours}${minutes}${seconds}`
+      };
+    }
+
+    function sanitizeFilePart(value, fallback) {
+      return (value || fallback).trim().replace(/[^a-zA-Z0-9_-]+/g, '_');
+    }
+
+    function exportCanvasBlob() {
+      return new Promise((resolve) => {
+        const exportCanvas = document.createElement('canvas');
+        exportCanvas.width = canvas.width;
+        exportCanvas.height = canvas.height;
+        const exportCtx = exportCanvas.getContext('2d');
+        exportCtx.drawImage(canvas, 0, 0);
+        exportCanvas.toBlob(resolve, 'image/png');
+      });
+    }
+
+    async function blobToBase64(blob) {
+      const buffer = await blob.arrayBuffer();
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+      }
+      return btoa(binary);
+    }
+
+    clearBtn.addEventListener('click', () => {
+      strokes = [];
+      redrawAll();
+      setStatus('Drawing cleared.');
+    });
+
+    uploadBtn.addEventListener('click', async () => {
+      const participantName = participantNameInput.value.trim();
+
+      if (!participantName) {
+        setStatus('Please enter the participant name before uploading.', 'error');
+        participantNameInput.focus();
+        return;
+      }
+
+      const blob = await exportCanvasBlob();
+      if (!blob) {
+        setStatus('Could not create the image file.', 'error');
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      setStatus('Uploading image to Google Drive...');
+
+      try {
+        const { date, time } = formatDateParts();
+        const safeParticipantName = sanitizeFilePart(participantName, 'Participant');
+        const base64Data = await blobToBase64(blob);
+        const response = await fetch(GOOGLE_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            mimeType: 'image/png',
+            data: base64Data,
+            participantName: safeParticipantName,
+            date,
+            time
+          })
+        });
+
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+          throw new Error(result.message || 'Upload failed.');
+        }
+
+        setStatus(`Upload complete: ${result.filename}`, 'success');
+      } catch (error) {
+        setStatus(`Upload failed: ${error.message}`, 'error');
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    });
+
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseleave', stopDrawing);
+    canvas.addEventListener('touchstart', startDrawing, { passive: false });
+    canvas.addEventListener('touchmove', draw, { passive: false });
+    canvas.addEventListener('touchend', stopDrawing);
+    window.addEventListener('resize', setupCanvas);
+
+    setupCanvas();
+  </script>
+</body>
+</html>
